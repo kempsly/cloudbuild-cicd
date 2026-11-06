@@ -1,28 +1,62 @@
-import pytest
-from unittest.mock import patch,MagicMock
-from main import app, client as app_client
+from unittest.mock import MagicMock, patch
 
-@pytest.fixture
-def client():
-    with app.test_client() as client:
-        yield client
+# Mock BigQuery before importing main, so tests don't require GCP credentials.
+with patch("google.cloud.bigquery.Client") as mock_client_class:
+    mock_client_class.return_value = MagicMock()
+    import main
 
-@patch.object(app_client,'load_table_from_uri')
-@patch.object(app_client,'get_table')
-def test_main_endpoint(mock_get_table, mock_load_table_from_uri, client):
-    mock_load_job = MagicMock()
-    mock_load_table_from_uri.return_value = mock_load_job
+
+@patch("main.client.get_table")
+@patch("main.client.load_table_from_uri")
+def test_main_success(mock_load_table, mock_get_table):
+    mock_job = MagicMock()
+    mock_load_table.return_value = mock_job
 
     mock_table = MagicMock()
     mock_table.num_rows = 50
     mock_get_table.return_value = mock_table
 
-    response = client.get('/')
+    with main.app.test_client() as test_client:
+        response = test_client.get("/")
+
     assert response.status_code == 200
-    data = response.get_json()
-    assert 'data' in data
-    assert data['data'] == 40
+    assert response.get_json() == {
+        "message": "CSV loaded successfully",
+        "table": "mlops-dev-513820.test_schema.us_states",
+        "rows": 50,
+    }
+
+    mock_load_table.assert_called_once()
+    mock_job.result.assert_called_once()
+    mock_get_table.assert_called_once_with(
+        "mlops-dev-513820.test_schema.us_states"
+    )
+
+
+@patch("main.client.get_table")
+@patch("main.client.load_table_from_uri")
+def test_main_empty_table(mock_load_table, mock_get_table):
+    mock_job = MagicMock()
+    mock_load_table.return_value = mock_job
+
+    mock_table = MagicMock()
+    mock_table.num_rows = 0
+    mock_get_table.return_value = mock_table
+
+    with main.app.test_client() as test_client:
+        response = test_client.get("/")
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == 0
+    mock_job.result.assert_called_once()
+
+
+@patch("main.client.load_table_from_uri")
+def test_main_bigquery_load_failure(mock_load_table):
+    mock_load_table.side_effect = RuntimeError("BigQuery load failed")
+
+    with main.app.test_client() as test_client:
+        response = test_client.get("/")
+
+    assert response.status_code == 500 
     
-    mock_load_table_from_uri.assert_called_once()
-    mock_load_job.result.assert_called_once()
-    mock_get_table.assert_called_once()

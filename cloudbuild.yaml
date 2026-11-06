@@ -1,45 +1,40 @@
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/firstmlops-gcp/demo-flask-app:$COMMIT_SHA', '.']
+  # 1. Run unit tests
+  - name: 'python:3.10'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'pip install -r requirements.txt && python -m pytest -v'
 
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'gcr.io/firstmlops-gcp/demo-flask-app:$COMMIT_SHA']
+  # 2. Build Docker image for Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--platform=linux/amd64'
+      - '-t'
+      - 'us-docker.pkg.dev/$PROJECT_ID/mlops-docker/demo-flask-app:$BUILD_ID'
+      - '.'
 
-- name: 'gcr.io/firstmlops-gcp/demo-flask-app:$COMMIT_SHA'
-  entrypoint: 'bash'
-  args:
-   - '-c'
-   - |
-      python -m pytest
-  
-- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  entrypoint: gcloud
-  args:
-   - 'run'
-   - 'deploy'
-   - 'py-bq-load'
-   - '--image'
-   - 'gcr.io/firstmlops-gcp/demo-flask-app:$COMMIT_SHA'
-   - '--region'
-   - 'us-central1'
-   - '--allow-unauthenticated'
+  # 3. Push image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-docker.pkg.dev/$PROJECT_ID/mlops-docker/demo-flask-app:$BUILD_ID'
+
+  # 4. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:stable'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'demo-flask-app'
+      - '--image=us-docker.pkg.dev/$PROJECT_ID/mlops-docker/demo-flask-app:$BUILD_ID'
+      - '--region=us-central1'
+      - '--project=$PROJECT_ID'
+      - '--allow-unauthenticated'
+
 images:
-- 'gcr.io/firstmlops-gcp/demo-flask-app:$COMMIT_SHA'
+  - 'us-docker.pkg.dev/$PROJECT_ID/mlops-docker/demo-flask-app:$BUILD_ID'
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
-
-############################################
-###################### SIMPLIFY VERSION TO TEST ######################
-##################################################################
-# steps:
-# - name: 'gcr.io/cloud-builders/docker'
-#   args: ['build', '-t', 'gcr.io/$PROJECT_ID/demo-flask-app', '.']
-# - name: 'gcr.io/cloud-builders/docker'
-#   args: ['push', 'gcr.io/$PROJECT_ID/demo-flask-app']
-# images:
-# - 'gcr.io/$PROJECT_ID/demo-flask-app'
-# options:
-#   logging: CLOUD_LOGGING_ONLY
-
