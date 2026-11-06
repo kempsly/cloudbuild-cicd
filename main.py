@@ -1,4 +1,3 @@
-
 from google.cloud import bigquery
 from flask import Flask
 import os
@@ -8,6 +7,7 @@ app = Flask(__name__)
 client = bigquery.Client(project="mlops-dev-513820")
 
 table_id = "mlops-dev-513820.test_schema.us_states"
+
 uri = "gs://mlops-dev-513820-data/us-states.csv"
 
 
